@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sonic Nebula - Audio-Reactive Visualizer</title>
+  <script>p5.disableFriendlyErrors = true;</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/addons/p5.sound.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script>
+// === Configuration ===
+const CONFIG = {
+  particleCount: 1000,
+  nebulaSize: 500,
+  sensitivity: 1.5
+};
+
+// === Global State ===
+let particles = [];
+let mic, fft;
+
+// === Particle Class ===
+class Particle {
+  constructor() {
+    this.pos = p5.Vector.random3D().mult(random(CONFIG.nebulaSize / 2));
+    this.vel = createVector(0, 0, 0);
+    this.color = color(random(180, 240), 80, 90); // Blue-ish hues
+  }
+
+  update(bass, mid, treble) {
+    let force = createVector(
+      noise(this.pos.x * 0.01, this.pos.y * 0.01, this.pos.z * 0.01 + frameCount * 0.01) - 0.5,
+      noise(this.pos.y * 0.01, this.pos.z * 0.01, this.pos.x * 0.01 + frameCount * 0.01) - 0.5,
+      noise(this.pos.z * 0.01, this.pos.x * 0.01, this.pos.y * 0.01 + frameCount * 0.01) - 0.5
+    );
+    force.mult(bass * CONFIG.sensitivity * 0.05);
+    this.vel.add(force);
+    this.vel.mult(0.98); // damping
+    this.pos.add(this.vel);
+
+    // Color shift based on mid
+    let h = 180 + mid * 0.3;
+    this.color = color(h % 360, 80, 90 + treble * 0.2);
+
+    // Bound to sphere
+    if (this.pos.mag() > CONFIG.nebulaSize) {
+      this.pos.normalize().mult(CONFIG.nebulaSize);
+      this.vel.mult(-0.5);
+    }
+  }
+
+  display() {
+    stroke(this.color);
+    strokeWeight(2);
+    point(this.pos.x, this.pos.y, this.pos.z);
+  }
+}
+
+// === Setup ===
+function setup() {
+  createCanvas(windowWidth, windowHeight, WEBGL);
+  colorMode(HSB, 360, 100, 100);
+  noFill();
+
+  // Audio setup
+  userStartAudio();
+  mic = new p5.AudioIn();
+  mic.start();
+  fft = new p5.FFT(0.8, 256);
+  fft.setInput(mic);
+
+  // Initialize particles
+  for (let i = 0; i < CONFIG.particleCount; i++) {
+    particles.push(new Particle());
+  }
+}
+
+// === Draw Loop ===
+function draw() {
+  background(0, 0, 10); // Dark background
+
+  // Get audio data
+  fft.analyze();
+  let bass = fft.getEnergy('bass') / 255;
+  let mid = fft.getEnergy('mid') / 255;
+  let treble = fft.getEnergy('treble') / 255;
+
+  // Update and display particles
+  rotateY(frameCount * 0.002);
+  rotateX(frameCount * 0.001);
+  for (let p of particles) {
+    p.update(bass, mid, treble);
+    p.display();
+  }
+
+  // Orbit camera
+  orbitControl();
+}
+
+// === Responsive ===
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+}
+</script>
+</body>
+</html>
